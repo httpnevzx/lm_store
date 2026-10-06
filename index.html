@@ -957,6 +957,33 @@ html, body {
   }
 }
 
+
+@keyframes pulseOrder {
+  0% { box-shadow: 0 0 0 0 rgba(49, 196, 141, 0.7); }
+  70% { box-shadow: 0 0 0 10px rgba(49, 196, 141, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(49, 196, 141, 0); }
+}
+.order-card {
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  transition: transform .2s ease;
+}
+.order-card.pending {
+  border-left: 5px solid #F59E0B;
+}
+.order-card.completed {
+  border-left: 5px solid #10B981;
+  opacity: 0.85;
+}
+[data-theme="dark"] .order-card {
+  background: #1E293B;
+  border-color: #334155;
+}
+
 </style>
 </head>
 <body>
@@ -1280,6 +1307,9 @@ html, body {
       <div class="admin-tabs" style="display:flex; border-bottom:1px solid var(--line); background:var(--cream);">
         <button class="admin-tab active" data-tab="tab-dashboard" style="flex:1; padding:14px; border:none; background:none; font-family:'Cormorant Garamond'; font-size:1.15rem; cursor:pointer; font-weight:700; color:var(--ink); border-bottom:2px solid var(--rose-deep);">Dashboard</button>
         <button class="admin-tab" data-tab="tab-colecao" style="flex:1; padding:14px; border:none; background:none; font-family:'Cormorant Garamond'; font-size:1.15rem; cursor:pointer; font-weight:500; color:var(--muted); border-bottom:2px solid transparent;">Coleção</button>
+      <button class="admin-tab" data-tab="tab-pedidos" style="flex:1; padding:14px; border:none; background:none; font-family:'Cormorant Garamond'; font-size:1.15rem; cursor:pointer; font-weight:500; color:var(--muted); border-bottom:2px solid transparent; position:relative;">
+        🔔 Pedidos <span id="admOrdersBadge" style="display:none; background:#8B0000; color:#fff; font-size:0.72rem; padding:2px 7px; border-radius:12px; font-family:'Jost',sans-serif; font-weight:700; vertical-align:middle; margin-left:3px;">0</span>
+      </button>
         <button class="admin-tab" data-tab="tab-categorias" style="flex:1; padding:14px; border:none; background:none; font-family:'Cormorant Garamond'; font-size:1.15rem; cursor:pointer; font-weight:500; color:var(--muted); border-bottom:2px solid transparent;">Categorias</button>
       </div>
 
@@ -1381,6 +1411,34 @@ html, body {
         </table>
       </div>
       </div> <!-- fim tab colecao -->
+
+            <!-- TAB PEDIDOS EM TEMPO REAL -->
+      <div class="admin-tab-content" id="tab-pedidos" style="padding: 24px; display:none;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:18px;">
+          <div>
+            <h4 style="font-family:'Cormorant Garamond'; font-size:1.35rem; color:var(--ink); margin:0;">🔔 Pedidos para Separação em Tempo Real</h4>
+            <p style="font-size:0.84rem; color:var(--muted); margin:3px 0 0;">Alerta sonoro ativo automaticamente quando houver compras no site</p>
+          </div>
+          <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+            <button id="testSoundBtn" type="button" class="mini-btn" style="background:#1E7E34; color:#fff; padding:8px 14px; font-weight:700; border-radius:4px; font-size:0.82rem; cursor:pointer; border:none;">🔊 Testar Som de Alerta</button>
+            <button id="clearOrdersBtn" type="button" class="mini-btn" style="background:#8B0000; color:#fff; padding:8px 14px; font-weight:600; border-radius:4px; font-size:0.82rem; cursor:pointer; border:none;">Limpar Histórico</button>
+          </div>
+        </div>
+
+        <!-- Banner de Novo Pedido em Destaque -->
+        <div id="newOrderBanner" style="display:none; background:#DEF7EC; border:2px solid #31C48D; border-radius:8px; padding:14px 18px; margin-bottom:18px; animation:pulseOrder 1.5s infinite;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <span style="font-weight:700; color:#03543F; font-size:0.95rem;">🎉 NOVO PEDIDO RECEBIDO! Separe a peça única no estoque.</span>
+            <button id="dismissBannerBtn" type="button" style="background:none; border:none; color:#03543F; font-weight:700; cursor:pointer; font-size:1.1rem;">✕ Fechar</button>
+          </div>
+        </div>
+
+        <div id="adminOrdersList">
+          <div style="text-align:center; padding:40px 20px; color:var(--muted); font-size:0.92rem;">
+            Nenhum pedido recebido ainda. Quando uma cliente comprar no site, o alarme tocará aqui e os detalhes da peça aparecerão instantaneamente! 🛎️
+          </div>
+        </div>
+      </div>
 
       <div class="admin-tab-content" id="tab-categorias" style="padding: 24px; display:none;">
         <h4 style="margin-bottom:12px; font-family:'Cormorant Garamond'; font-size:1.2rem; color:var(--ink);">Gerenciar Categorias</h4>

@@ -407,7 +407,11 @@ function updateCartUI(){
   const btnWhats = document.getElementById('whatsCheckoutBtn');
   if(btnWhats) {
     btnWhats.href = `https://wa.me/5592981489393?text=${encodeURIComponent(orderMsg)}`;
-    btnWhats.onclick = () => { if(typeof addSale === 'function') addSale(totalComFrete); closeDrawer(); };
+    btnWhats.onclick = () => {
+      if(typeof addSale === 'function') addSale(totalComFrete);
+      if(typeof registerOrder === 'function') registerOrder(cart, totalComFrete, wantsDelivery, 'WhatsApp');
+      closeDrawer();
+    };
   }
 } 
 
@@ -1164,6 +1168,11 @@ document.getElementById('infinitePayCheckoutBtn')?.addEventListener('click', asy
       const frete = document.getElementById('delivCheck')?.checked ? 15 : 0;
       if (typeof addSale === 'function') addSale(subtotal + frete);
       
+      // Registrar pedido para separação imediata com alerta sonoro
+      if(typeof registerOrder === 'function') {
+        await registerOrder(cart, subtotal + frete, wantsDelivery, 'InfinitePay');
+      }
+
       // Marcar peças únicas como vendidas
       for (const it of cart) {
         try {
@@ -1194,3 +1203,252 @@ if (window.location.search.includes('payment=success')) {
   }, 600);
 }
 
+
+
+/* ---------- ÁUDIO E NOTIFICAÇÃO SONORA DE PEDIDOS ---------- */
+let audioCtx = null;
+function getAudioContext() {
+  if (!audioCtx) {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (AudioContext) audioCtx = new AudioContext();
+  }
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+  return audioCtx;
+}
+
+window.playOrderAlertSound = playOrderAlertSound;
+function playOrderAlertSound() {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    
+    // Tocar sequência de sino/campainha cristalina (C6 -> E6 -> G6 -> C7)
+    const notes = [
+      { freq: 1046.50, delay: 0.00, dur: 0.25 },
+      { freq: 1318.51, delay: 0.16, dur: 0.30 },
+      { freq: 1567.98, delay: 0.32, dur: 0.35 },
+      { freq: 2093.00, delay: 0.48, dur: 0.70 }
+    ];
+    
+    notes.forEach(n => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(n.freq, ctx.currentTime + n.delay);
+      gain.gain.setValueAtTime(0.001, ctx.currentTime + n.delay);
+      gain.gain.exponentialRampToValueAtTime(0.55, ctx.currentTime + n.delay + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + n.delay + n.dur);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(ctx.currentTime + n.delay);
+      osc.stop(ctx.currentTime + n.delay + n.dur);
+    });
+  } catch(err) {
+    console.error('Erro na síntese de áudio:', err);
+  }
+}
+
+// Botão de testar som
+document.getElementById('testSoundBtn')?.addEventListener('click', () => {
+  playOrderAlertSound();
+  showToast('🔊 Som de alerta reproduzido com sucesso!');
+});
+
+// Botão de fechar banner de novo pedido
+document.getElementById('dismissBannerBtn')?.addEventListener('click', () => {
+  const b = document.getElementById('newOrderBanner');
+  if (b) b.style.display = 'none';
+});
+
+/* ---------- PERSISTÊNCIA DE PEDIDOS NO FIRESTORE ---------- */
+window.registerOrder = registerOrder;
+async function registerOrder(items, total, wantsDelivery, method) {
+  const orderId = `LM-${Date.now()}`;
+  const orderData = {
+    id: orderId,
+    createdAt: Date.now(),
+    items: items.map(it => ({
+      id: it.id,
+      name: it.name,
+      color: it.color,
+      size: it.selectedSize || it.size || 'Único',
+      code: it.code || '',
+      price: it.price,
+      img: Array.isArray(it.img) ? (it.img[it.imgIdx || 0] || it.img[0]) : (it.img || '')
+    })),
+    total: total,
+    wantsDelivery: Boolean(wantsDelivery),
+    method: method, // 'InfinitePay' ou 'WhatsApp'
+    status: 'pendente_separacao'
+  };
+
+  try {
+    await setDoc(doc(db, "orders", orderId), orderData);
+    console.log('Pedido registrado com sucesso no Firestore:', orderId);
+  } catch(e) {
+    console.error('Erro ao registrar pedido:', e);
+  }
+}
+
+// Escuta em tempo real da coleção "orders"
+const knownOrderIds = new Set();
+let isInitialOrdersLoad = true;
+
+onSnapshot(collection(db, "orders"), (snapshot) => {
+  const orders = [];
+  let hasNewPending = false;
+
+  snapshot.forEach(docSnap => {
+    const o = { docId: docSnap.id, ...docSnap.data() };
+    orders.push(o);
+    if (!isInitialOrdersLoad && o.status === 'pendente_separacao' && !knownOrderIds.has(o.id)) {
+      hasNewPending = true;
+    }
+    knownOrderIds.add(o.id);
+  });
+
+  orders.sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+  if (hasNewPending) {
+    playOrderAlertSound();
+    showToast('🔔 NOVO PEDIDO RECEBIDO! Verifique a aba de Pedidos.');
+    const banner = document.getElementById('newOrderBanner');
+    if (banner) banner.style.display = 'block';
+  }
+  isInitialOrdersLoad = false;
+
+  renderOrdersTab(orders);
+});
+
+// Renderizar aba de pedidos
+function renderOrdersTab(orders) {
+  const listEl = document.getElementById('adminOrdersList');
+  const badgeEl = document.getElementById('admOrdersBadge');
+  
+  const pendingCount = orders.filter(o => o.status === 'pendente_separacao').length;
+  if (badgeEl) {
+    badgeEl.textContent = pendingCount;
+    badgeEl.style.display = pendingCount > 0 ? 'inline-block' : 'none';
+  }
+
+  if (!listEl) return;
+
+  if (orders.length === 0) {
+    listEl.innerHTML = `
+      <div style="text-align:center; padding:40px 20px; color:var(--muted); font-size:0.92rem;">
+        Nenhum pedido recebido ainda. Quando uma cliente comprar no site, o alarme tocará aqui e os detalhes da peça aparecerão instantaneamente! 🛎️
+      </div>
+    `;
+    return;
+  }
+
+  listEl.innerHTML = orders.map(o => {
+    const isPending = o.status === 'pendente_separacao';
+    const dateObj = new Date(o.createdAt || Date.now());
+    const dateFormatted = dateObj.toLocaleDateString('pt-BR') + ' às ' + dateObj.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+
+    return `
+      <div class="order-card ${isPending ? 'pending' : 'completed'}">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; border-bottom:1px solid var(--line); padding-bottom:10px; margin-bottom:12px;">
+          <div>
+            <strong style="font-size:1.05rem; color:var(--ink);">Pedido #${o.id}</strong>
+            <span style="font-size:0.78rem; color:var(--muted); margin-left:8px;">${dateFormatted}</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:0.75rem; font-weight:700; padding:4px 10px; border-radius:12px; ${isPending ? 'background:#FEF3C7; color:#92400E;' : 'background:#DEF7EC; color:#03543F;'}">
+              ${isPending ? '⏳ Aguardando Separação' : '✓ Peça Separada / Enviada'}
+            </span>
+            <span style="font-size:0.75rem; font-weight:600; padding:4px 8px; border-radius:10px; background:var(--blush); color:var(--ink);">
+              ${o.method === 'InfinitePay' ? '💳 InfinitePay' : '💬 WhatsApp'}
+            </span>
+          </div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:14px;">
+          ${(o.items || []).map(it => `
+            <div style="display:flex; align-items:center; gap:12px; background:rgba(0,0,0,0.02); padding:8px 12px; border-radius:6px;">
+              <img src="${it.img || placeholderImg}" style="width:48px; height:60px; object-fit:cover; border-radius:4px;">
+              <div style="flex:1;">
+                <strong style="color:var(--ink); font-size:0.92rem; display:block;">${it.name}</strong>
+                <span style="font-size:0.78rem; color:var(--muted);">
+                  Cor: <strong>${it.color}</strong> • Tamanho: <strong style="color:var(--rose-deep); font-size:0.84rem;">${it.size}</strong> ${it.code ? `• Ref: ${it.code}` : ''}
+                </span>
+              </div>
+              <div style="font-weight:700; color:var(--ink); font-size:0.92rem;">${money(it.price)}</div>
+            </div>
+          `).join('')}
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; border-top:1px solid var(--line); padding-top:10px;">
+          <div>
+            <span style="font-size:0.8rem; color:var(--muted);">
+              🚚 Envio: <strong>${o.wantsDelivery ? 'Frete Padrão (R$ 15,00)' : 'Cliente retira / paga Uber'}</strong>
+            </span>
+            <div style="font-size:1.05rem; font-weight:700; color:var(--ink); margin-top:2px;">
+              Total: ${money(o.total || 0)}
+            </div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            ${isPending ? `
+              <button type="button" class="mini-btn" data-orderdone="${o.id}" style="background:#1E7E34; color:#fff; border:none; padding:7px 14px; font-weight:700; font-size:0.8rem; border-radius:4px; cursor:pointer;">
+                ✓ Marcar como Separado
+              </button>
+            ` : `
+              <button type="button" class="mini-btn" data-orderreopen="${o.id}" style="background:#4F4352; color:#fff; border:none; padding:6px 12px; font-weight:600; font-size:0.76rem; border-radius:4px; cursor:pointer;">
+                Reabrir Pedido
+              </button>
+            `}
+            <button type="button" class="mini-btn" data-orderdel="${o.id}" style="background:#8B0000; color:#fff; border:none; padding:6px 10px; font-weight:600; font-size:0.76rem; border-radius:4px; cursor:pointer;">
+              Excluir
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// Ações nos botões de pedidos
+document.addEventListener('click', async (e) => {
+  const doneId = e.target.closest('[data-orderdone]')?.dataset.orderdone;
+  const reopenId = e.target.closest('[data-orderreopen]')?.dataset.orderreopen;
+  const delId = e.target.closest('[data-orderdel]')?.dataset.orderdel;
+
+  if (doneId) {
+    try {
+      await updateDoc(doc(db, "orders", doneId), { status: 'separado' });
+      showToast('Pedido marcado como separado / concluído! ✓');
+    } catch(err) { console.error('Erro:', err); }
+  }
+
+  if (reopenId) {
+    try {
+      await updateDoc(doc(db, "orders", reopenId), { status: 'pendente_separacao' });
+      showToast('Pedido reaberto como pendente.');
+    } catch(err) { console.error('Erro:', err); }
+  }
+
+  if (delId) {
+    if (confirm('Excluir este pedido do histórico?')) {
+      try {
+        await deleteDoc(doc(db, "orders", delId));
+        showToast('Pedido removido.');
+      } catch(err) { console.error('Erro:', err); }
+    }
+  }
+});
+
+// Limpar todos os pedidos
+document.getElementById('clearOrdersBtn')?.addEventListener('click', async () => {
+  if (confirm('Deseja apagar todo o histórico de pedidos da loja?')) {
+    try {
+      const snap = await getDocs(collection(db, "orders"));
+      for (const d of snap.docs) {
+        await deleteDoc(doc(db, "orders", d.id));
+      }
+      showToast('Histórico de pedidos zerado com sucesso.');
+    } catch(err) { console.error('Erro:', err); }
+  }
+});
