@@ -1074,7 +1074,12 @@ if (sidebarAdminBtn) {
 
 
 
-if(window.location.hash === '#admin'){ window.openAdmin(); window.history.replaceState(null, null, window.location.pathname); }
+if(window.location.hash === '#admin' || window.location.pathname.endsWith('/admin') || window.location.pathname.endsWith('/admin.html')){
+  window.openAdmin();
+  if (window.location.pathname !== '/' && window.location.pathname !== '/index.html') {
+    window.history.replaceState(null, null, '/#admin');
+  }
+}
 
 
 
@@ -1611,3 +1616,32 @@ async function sendTelegramAlert(orderData) {
     console.error('Erro ao enviar alerta para o Telegram:', err);
   }
 }
+
+
+// Conectar Webhook do Bot para atendimento e catálogo automático na Vercel
+document.getElementById('tgWebhookBtn')?.addEventListener('click', async () => {
+  const botToken = document.getElementById('tgBotToken')?.value.trim() || tgConfig.botToken || '8777035783:AAGpUAyVw73WQpjuli0aRb7D729D4rVNvCI';
+  const webhookUrl = 'https://lmstore-xi.vercel.app/api/telegram';
+
+  const btn = document.getElementById('tgWebhookBtn');
+  const originalText = btn.innerHTML;
+  btn.innerHTML = '⏳ Conectando...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${botToken}/setWebhook?url=${encodeURIComponent(webhookUrl)}`);
+    const data = await res.json();
+    if (data.ok) {
+      alert('🎉 Sucesso! Seu bot agora responde clientes automaticamente 24h na Vercel com catálogo de fotos e tira-dúvidas!\n\nAbra o @Larystoreexclusive_bot e mande "oi" ou "/colecao" para testar!');
+      showToast('Bot conectado para atendimento automático!');
+    } else {
+      throw new Error(data.description || 'Erro ao registrar webhook');
+    }
+  } catch(err) {
+    console.error('Erro webhook:', err);
+    alert('Erro ao ativar respostas automáticas: ' + err.message);
+  } finally {
+    btn.innerHTML = originalText;
+    btn.disabled = false;
+  }
+});
