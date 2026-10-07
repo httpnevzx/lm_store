@@ -1433,6 +1433,52 @@ html, body {
           </div>
         </div>
 
+                <!-- CONFIGURAÇÃO DO ALERTA NO TELEGRAM -->
+        <div style="background:var(--white); border:1px solid var(--line); border-radius:8px; padding:18px 20px; margin-bottom:20px; box-shadow:0 2px 8px rgba(0,0,0,0.03);">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
+            <div style="display:flex; align-items:center; gap:10px;">
+              <span style="font-size:1.6rem;">📲</span>
+              <div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <strong style="font-size:1.05rem; color:var(--ink);">Alerta no Celular via Telegram (Push 24h)</strong>
+                  <span id="tgStatusBadge" style="font-size:0.7rem; font-weight:700; padding:2px 8px; border-radius:10px; background:#E5E7EB; color:#4B5563;">⚪ Não Configurado</span>
+                </div>
+                <span style="font-size:0.8rem; color:var(--muted);">Receba um aviso sonoro no seu Telegram quando houver um novo pedido para separar!</span>
+              </div>
+            </div>
+            <button id="toggleTgConfigBtn" type="button" class="mini-btn" style="background:var(--cream); color:var(--ink); border:1px solid var(--line); padding:7px 14px; font-size:0.8rem; font-weight:600; cursor:pointer; border-radius:4px;">
+              ⚙️ Configurar Bot
+            </button>
+          </div>
+
+          <div id="tgConfigBody" style="display:none; border-top:1px solid var(--line); padding-top:14px; margin-top:10px;">
+            <div style="background:rgba(0,0,0,0.02); padding:12px 14px; border-radius:6px; margin-bottom:14px; font-size:0.82rem; color:var(--ink); line-height:1.5;">
+              <strong>Como ativar em 2 minutos (100% gratuito):</strong><br>
+              1. No Telegram, abra a conversa com <strong>@BotFather</strong> e envie <code>/newbot</code>. Ele te dará o <strong>Token</strong> do seu bot.<br>
+              2. Abra a conversa com <strong>@userinfobot</strong> para descobrir o seu <strong>Chat ID</strong> numérico.<br>
+              3. <em>Importante:</em> Abra uma conversa com o seu próprio bot recém-criado e clique em <strong>Começar</strong> (ou envie um "oi") para autorizá-lo a te enviar mensagens!
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+              <div>
+                <label for="tgBotToken" style="font-size:0.78rem; font-weight:700; color:var(--ink); display:block; margin-bottom:4px;">Token do Bot</label>
+                <input type="text" id="tgBotToken" placeholder="Ex: 7123456789:AAFoXyZ..." style="width:100%; padding:9px 12px; border:1px solid var(--line); border-radius:4px; font-size:0.85rem; background:var(--white); color:var(--ink); font-weight:500;">
+              </div>
+              <div>
+                <label for="tgChatId" style="font-size:0.78rem; font-weight:700; color:var(--ink); display:block; margin-bottom:4px;">Seu Chat ID (Número)</label>
+                <input type="text" id="tgChatId" placeholder="Ex: 123456789" style="width:100%; padding:9px 12px; border:1px solid var(--line); border-radius:4px; font-size:0.85rem; background:var(--white); color:var(--ink); font-weight:500;">
+              </div>
+            </div>
+            <div style="display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap;">
+              <button type="button" id="tgSaveBtn" class="mini-btn" style="background:var(--ink); color:#fff; border:none; padding:8px 16px; font-weight:700; border-radius:4px; font-size:0.82rem; cursor:pointer;">
+                💾 Salvar Configurações
+              </button>
+              <button type="button" id="tgTestBtn" class="mini-btn" style="background:#0284C7; color:#fff; border:none; padding:8px 16px; font-weight:700; border-radius:4px; font-size:0.82rem; cursor:pointer;">
+                📲 Enviar Notificação de Teste
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div id="adminOrdersList">
           <div style="text-align:center; padding:40px 20px; color:var(--muted); font-size:0.92rem;">
             Nenhum pedido recebido ainda. Quando uma cliente comprar no site, o alarme tocará aqui e os detalhes da peça aparecerão instantaneamente! 🛎️

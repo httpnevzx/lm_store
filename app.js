@@ -1296,6 +1296,8 @@ async function registerOrder(items, total, wantsDelivery, method) {
   try {
     await setDoc(doc(db, "orders", orderId), orderData);
     console.log('Pedido registrado com sucesso no Firestore:', orderId);
+    // Disparar notificação instantânea para o Telegram da dona
+    if (typeof sendTelegramAlert === 'function') sendTelegramAlert(orderData);
   } catch(e) {
     console.error('Erro ao registrar pedido:', e);
   }
@@ -1461,3 +1463,151 @@ document.getElementById('clearOrdersBtn')?.addEventListener('click', async () =>
     } catch(err) { console.error('Erro:', err); }
   }
 });
+
+
+/* ---------- INTEGRAÇÃO TELEGRAM (PUSH NOTIFICATIONS 24H) ---------- */
+let tgConfig = { botToken: '', chatId: '', active: false };
+
+// Escuta em tempo real da configuração do Telegram no Firestore
+onSnapshot(doc(db, "store", "telegram"), (docSnap) => {
+  if (docSnap.exists()) {
+    tgConfig = { ...docSnap.data() };
+    updateTelegramUI();
+  }
+});
+
+function updateTelegramUI() {
+  const tokenInput = document.getElementById('tgBotToken');
+  const chatInput = document.getElementById('tgChatId');
+  const badge = document.getElementById('tgStatusBadge');
+
+  if (tokenInput && !tokenInput.value) tokenInput.value = tgConfig.botToken || '';
+  if (chatInput && !chatInput.value) chatInput.value = tgConfig.chatId || '';
+
+  if (badge) {
+    if (tgConfig.botToken && tgConfig.chatId) {
+      badge.textContent = '🟢 Alertas Ativos no Telegram';
+      badge.style.background = '#DEF7EC';
+      badge.style.color = '#03543F';
+    } else {
+      badge.textContent = '⚪ Não Configurado';
+      badge.style.background = '#E5E7EB';
+      badge.style.color = '#4B5563';
+    }
+  }
+}
+
+// Alternar exibição do painel de configuração do Telegram
+document.getElementById('toggleTgConfigBtn')?.addEventListener('click', () => {
+  const body = document.getElementById('tgConfigBody');
+  if (body) {
+    body.style.display = (body.style.display === 'none' || !body.style.display) ? 'block' : 'none';
+  }
+});
+
+// Salvar configurações do Telegram no Firestore
+document.getElementById('tgSaveBtn')?.addEventListener('click', async () => {
+  const botToken = document.getElementById('tgBotToken')?.value.trim();
+  const chatId = document.getElementById('tgChatId')?.value.trim();
+
+  if (!botToken || !chatId) {
+    alert('Por favor, preencha o Token do Bot e o Chat ID.');
+    return;
+  }
+
+  try {
+    await setDoc(doc(db, "store", "telegram"), {
+      botToken: botToken,
+      chatId: chatId,
+      updatedAt: Date.now()
+    });
+    tgConfig = { botToken, chatId, active: true };
+    updateTelegramUI();
+    showToast('Configurações do Telegram salvas com sucesso! 📲');
+  } catch(err) {
+    console.error('Erro ao salvar Telegram:', err);
+    showToast('Erro ao salvar configurações.');
+  }
+});
+
+// Enviar alerta de teste para o Telegram
+document.getElementById('tgTestBtn')?.addEventListener('click', async () => {
+  const botToken = document.getElementById('tgBotToken')?.value.trim() || tgConfig.botToken;
+  const chatId = document.getElementById('tgChatId')?.value.trim() || tgConfig.chatId;
+
+  if (!botToken || !chatId) {
+    alert('Preencha o Token do Bot e o Chat ID antes de enviar o teste.');
+    return;
+  }
+
+  const testMsg = '🔔 <b>Venda Efetuada!!</b>\n\n' +
+    '👗 <b>Item:</b> uma dose de paciência\n' +
+    '💰 <b>Valor:</b> R$ 10.000,00\n\n' +
+    '✨ <i>Teste de som e notificação concluído com sucesso!</i>';
+
+  const btn = document.getElementById('tgTestBtn');
+  const originalText = btn.innerHTML;
+  btn.innerHTML = '⏳ Enviando...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: testMsg,
+        parse_mode: 'HTML'
+      })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      alert('🎉 Alerta enviado com sucesso! Verifique seu Telegram no celular.');
+      showToast('Notificação de teste enviada!');
+    } else {
+      throw new Error(data.description || 'Erro desconhecido');
+    }
+  } catch(err) {
+    console.error('Erro no envio do teste:', err);
+    alert('Não foi possível enviar a mensagem no Telegram. Verifique se o Token e o Chat ID estão corretos e se você já deu "Começar" na conversa com o bot.\n\nDetalhe: ' + err.message);
+  } finally {
+    btn.innerHTML = originalText;
+    btn.disabled = false;
+  }
+});
+
+// Função para disparar mensagem de pedido para o Telegram
+window.sendTelegramAlert = sendTelegramAlert;
+async function sendTelegramAlert(orderData) {
+  if (!tgConfig.botToken || !tgConfig.chatId) return;
+
+  try {
+    const itemsList = (orderData.items || []).map(it => {
+      return `• <b>${it.name}</b>\n  - Cor: ${it.color}\n  - Tamanho: <b>${it.size}</b>\n  - Ref: ${it.code || 'N/A'}\n  - Preço: R$ ${Number(it.price || 0).toFixed(2).replace('.', ',')}`;
+    }).join('\n\n');
+
+    const envioTxt = orderData.wantsDelivery ? 'Frete Padrão (R$ 15,00)' : 'Cliente retira / paga Uber';
+    const totalTxt = `R$ ${Number(orderData.total || 0).toFixed(2).replace('.', ',')}`;
+
+    const message = `🔔 <b>NOVO PEDIDO NO SITE! - LM EXCLUSIVE</b>\n\n` +
+      `📦 <b>Pedido:</b> #${orderData.id}\n` +
+      `💳 <b>Pagamento:</b> ${orderData.method === 'InfinitePay' ? 'InfinitePay Online' : 'WhatsApp'}\n` +
+      `🚚 <b>Envio:</b> ${envioTxt}\n` +
+      `💰 <b>Total:</b> ${totalTxt}\n\n` +
+      `👗 <b>Peças a Separar (Peça Única):</b>\n${itemsList}\n\n` +
+      `⚠️ <i>Acesse o painel do site para marcar como separado!</i>`;
+
+    await fetch(`https://api.telegram.org/bot${tgConfig.botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: tgConfig.chatId,
+        text: message,
+        parse_mode: 'HTML'
+      })
+    });
+    console.log('Alerta do pedido enviado para o Telegram com sucesso!');
+  } catch(err) {
+    console.error('Erro ao enviar alerta para o Telegram:', err);
+  }
+}
