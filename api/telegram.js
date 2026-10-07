@@ -339,7 +339,7 @@ async function sendProductCatalog(chatId) {
   // Enviar introdução
   await callTelegram('sendMessage', {
     chat_id: chatId,
-    text: `✨ <b>Coleção Exclusiva Disponível (${products.length} peças únicas):</b>\n\nDeslize abaixo para ver os modelos disponíveis para compra imediata:`,
+    text: `✨ <b>Coleção Exclusiva Disponível (${products.length} peças únicas):</b>\n\nConfira abaixo os modelos disponíveis para compra imediata:`,
     parse_mode: 'HTML'
   });
 
@@ -363,22 +363,8 @@ async function sendProductCatalog(chatId) {
       ]
     };
 
-    if (p.img && p.img.startsWith('http')) {
-      await callTelegram('sendPhoto', {
-        chat_id: chatId,
-        photo: p.img,
-        caption: caption,
-        parse_mode: 'HTML',
-        reply_markup: productButtons
-      });
-    } else {
-      await callTelegram('sendMessage', {
-        chat_id: chatId,
-        text: caption,
-        parse_mode: 'HTML',
-        reply_markup: productButtons
-      });
-    }
+    // Enviar foto real (Base64 ou URL HTTP) com botões e reação de coração
+    await sendProductPhoto(chatId, p, caption, productButtons);
   }
 
   // Mensagem de encerramento com link para o site completo
@@ -392,4 +378,68 @@ async function sendProductCatalog(chatId) {
       ]
     }
   });
+}
+
+// Enviar foto real (Base64 ou URL HTTP) com botões e reação de coração automática
+async function sendProductPhoto(chatId, product, caption, replyMarkup) {
+  try {
+    let messageId = null;
+
+    if (product.img && product.img.startsWith('data:image')) {
+      const match = product.img.match(/^data:image\/([a-zA-Z0-9]+);base64,(.+)$/);
+      const ext = match ? match[1] : 'jpeg';
+      const base64Data = match ? match[2] : product.img.replace(/^data:image\/[a-zA-Z0-9]+;base64,/, '');
+      const buffer = Buffer.from(base64Data, 'base64');
+
+      const formData = new FormData();
+      formData.append('chat_id', chatId);
+      formData.append('caption', caption);
+      formData.append('parse_mode', 'HTML');
+      if (replyMarkup) {
+        formData.append('reply_markup', JSON.stringify(replyMarkup));
+      }
+      formData.append('photo', new Blob([buffer], { type: `image/${ext}` }), `produto.${ext}`);
+
+      const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      if (data.ok && data.result) {
+        messageId = data.result.message_id;
+      }
+    } else if (product.img && product.img.startsWith('http')) {
+      const data = await callTelegram('sendPhoto', {
+        chat_id: chatId,
+        photo: product.img,
+        caption: caption,
+        parse_mode: 'HTML',
+        reply_markup: replyMarkup
+      });
+      if (data.ok && data.result) {
+        messageId = data.result.message_id;
+      }
+    } else {
+      const data = await callTelegram('sendMessage', {
+        chat_id: chatId,
+        text: caption,
+        parse_mode: 'HTML',
+        reply_markup: replyMarkup
+      });
+      if (data.ok && data.result) {
+        messageId = data.result.message_id;
+      }
+    }
+
+    // Adiciona reação automática de ❤️ na peça postada pelo bot
+    if (messageId) {
+      await callTelegram('setMessageReaction', {
+        chat_id: chatId,
+        message_id: messageId,
+        reaction: [{ type: 'emoji', emoji: '❤️' }]
+      }).catch(() => {});
+    }
+  } catch (err) {
+    console.error('Erro em sendProductPhoto:', err);
+  }
 }
