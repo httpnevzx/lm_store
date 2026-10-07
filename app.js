@@ -1166,23 +1166,15 @@ document.getElementById('infinitePayCheckoutBtn')?.addEventListener('click', asy
     if (checkoutUrl) {
       const subtotal = cart.reduce((a,c)=>a+c.price*c.qty,0);
       const frete = document.getElementById('delivCheck')?.checked ? 15 : 0;
-      if (typeof addSale === 'function') addSale(subtotal + frete);
-      
-      // Registrar pedido para separação imediata com alerta sonoro
-      if(typeof registerOrder === 'function') {
-        await registerOrder(cart, subtotal + frete, wantsDelivery, 'InfinitePay');
-      }
 
-      // Marcar peças únicas como vendidas
-      for (const it of cart) {
-        try {
-          await updateDoc(doc(db, "products", it.id.toString()), {
-            status: 'indisponivel',
-            stock: 0
-          });
-        } catch(e) { console.error('Erro ao marcar vendido:', e); }
-      }
-      
+      // NÃO marcar como vendido aqui: a cliente ainda não pagou.
+      // Guardamos o carrinho e só processamos após o retorno com pagamento aprovado.
+      try {
+        localStorage.setItem('lm_pending_checkout', JSON.stringify({
+          orderNsu, cart, total: subtotal + frete, wantsDelivery: Boolean(wantsDelivery), createdAt: Date.now()
+        }));
+      } catch(e) { console.error('Erro ao salvar checkout pendente:', e); }
+
       window.location.href = checkoutUrl;
     } else {
       throw new Error(data.message || 'Link de checkout não retornado.');
@@ -1197,10 +1189,27 @@ document.getElementById('infinitePayCheckoutBtn')?.addEventListener('click', asy
 
 // Verificação de retorno de pagamento com sucesso
 if (window.location.search.includes('payment=success')) {
-  setTimeout(() => {
+  (async () => {
+    let pending = null;
+    try { pending = JSON.parse(localStorage.getItem('lm_pending_checkout') || 'null'); } catch(e) {}
+
+    if (pending && Array.isArray(pending.cart) && pending.cart.length > 0) {
+      // Só agora, com pagamento aprovado, a peça única fica indisponível
+      for (const it of pending.cart) {
+        try {
+          await updateDoc(doc(db, "products", it.id.toString()), { status: 'indisponivel', stock: 0 });
+        } catch(e) { console.error('Erro ao marcar vendido:', e); }
+      }
+      if (typeof addSale === 'function') addSale(pending.total || 0);
+      if (typeof registerOrder === 'function') {
+        await registerOrder(pending.cart, pending.total || 0, pending.wantsDelivery, 'InfinitePay');
+      }
+      localStorage.removeItem('lm_pending_checkout');
+    }
+
     alert('🎉 Parabéns! Seu pagamento foi processado pela InfinitePay. Entraremos em contato para o envio do seu pedido!');
     window.history.replaceState(null, null, window.location.pathname);
-  }, 600);
+  })();
 }
 
 
